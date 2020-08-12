@@ -7,21 +7,24 @@ import (
 	"github.com/FactomProject/factom"
 )
 
-var eth *Ethplorer
+var eth *Ethscan
 
 func main() {
 	server := flag.String("s", "localhost:8088", "The location of the factomd api")
-	ethapi := flag.String("eth", "", "The API key for ethplorer.io")
+	ethapi := flag.String("eth", "", "The API key for etherscan.io")
 	flag.Parse()
 
 	if *ethapi == "" {
 		panic("no eth api key provided")
 	}
 
-	eth = NewEthplorer(*ethapi)
+	eth = NewEthscan(*ethapi)
 	factom.SetFactomdServer(*server)
 
-	doHeight(230000)
+	if err := doHeight(230000); err != nil {
+		fmt.Println("!!ERROR!!", err)
+	}
+
 }
 
 func doHeight(h int64) error {
@@ -31,11 +34,11 @@ func doHeight(h int64) error {
 	}
 	fmt.Println(anchor)
 
-	e, err := eth.Get(anchor.Ethereum.TxID)
+	price, used, err := eth.Get(anchor.Ethereum.TxID)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("paid %v", e)
+	fmt.Println("gasPrice", price, "gwei", "Used", used)
 	return nil
 }
