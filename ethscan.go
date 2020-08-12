@@ -86,7 +86,7 @@ func (e *Ethscan) Get(txid string) (uint64, uint64, error) {
 	}
 
 	used, err := ethconv(res["gasUsed"])
-	fmt.Println(res["gasUsed"], used)
+	//fmt.Println(res["gasUsed"], used)
 	if err != nil {
 		return 0, 0, err
 	}
