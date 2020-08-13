@@ -4,80 +4,136 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/FactomProject/factom"
 )
 
-func main() {
-	btcsum, _ := os.Open("ethereum.txt")
-	//ethsum,_ := os.Open("ethereum.txt")
+func p(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
 
-	sc := bufio.NewScanner(btcsum)
+func loadBlockTimes() map[int]time.Time {
+	blocktimes := make(map[int]time.Time)
 
-	dupl := make(map[string]bool)
+	btfile, err := os.Open("blocktime.json")
+	p(err)
 
-	var sum float64
+	btdata, err := ioutil.ReadAll(btfile)
+	p(err)
+
+	err = json.Unmarshal(btdata, &blocktimes)
+	p(err)
+
+	return blocktimes
+}
+
+type Fee struct {
+	Height int
+	Hash   string
+	Fee    float64
+}
+
+func loadCosts(fname string) []Fee {
+	f, err := os.Open(fname)
+	p(err)
+	defer f.Close()
+
+	var res []Fee
+	sc := bufio.NewScanner(f)
 	first := true
 	for sc.Scan() {
 		if first {
 			first = false
 			continue
 		}
-		lines := strings.Split(sc.Text(), ",")
 
-		if dupl[lines[1]] {
-			continue
-		}
-		dupl[lines[1]] = true
+		tokens := strings.Split(sc.Text(), ",")
 
-		f, err := strconv.ParseFloat(strings.TrimSpace(lines[2]), 64)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		sum += f
+		height, err := strconv.Atoi(strings.TrimSpace(tokens[0]))
+		p(err)
+		fee, err := strconv.ParseFloat(strings.TrimSpace(tokens[2]), 64)
+		p(err)
+
+		res = append(res, Fee{
+			Height: height,
+			Hash:   strings.TrimSpace(tokens[1]),
+			Fee:    fee,
+		})
 	}
 
-	fmt.Println("Total:", sum, "BTC")
+	return res
+}
+
+func loadPrices(fname string) map[time.Time]float64 {
+
+	f, err := os.Open(fname)
+	p(err)
+	defer f.Close()
+	/*
+	   Timestamps are UTC timezone,https://www.CryptoDataDownload.com
+	   Date,Symbol,Open,High,Low,Close,Volume BTC,Volume USD
+	   2020-08-10 09-PM,BTCUSD,11863.32,11869.26,11800.06,11834.33,571.75,6759675.81
+	   0                  1      2        3        4         5        6     7
+	*/
+	res := make(map[time.Time]float64)
+	sc := bufio.NewScanner(f)
+	skip := 2
+	for sc.Scan() {
+		if skip > 0 {
+			skip--
+			continue
+		}
+
+		tokens := strings.Split(sc.Text(), ",")
+
+		t, err := time.Parse("2006-01-02", tokens[0])
+		p(err)
+
+		high, err := strconv.ParseFloat(tokens[3], 64)
+		p(err)
+		low, err := strconv.ParseFloat(tokens[4], 64)
+
+		res[t] = (high + low) / 2
+	}
+	return res
 
 }
 
-func main2() {
-	/*	btcf, err := os.Open("btc.txt")
-		if err != nil {
-			panic(err)
-		}*/
+func main() {
+	btcPrice := loadPrices("Coinbase_BTCUSD_d.csv")
+	ethPrice := loadPrices("Coinbase_ETHUSD_d.csv")
+	blocktimes := loadBlockTimes()
+	btc := loadCosts("bitcoin-filtered.txt")
+	eth := loadCosts("ethereum-filtered.txt")
 
-	blocktimes := make(map[int]time.Time)
+	stitch("btc-stitch.txt", "BTC", btcPrice, blocktimes, btc)
+	stitch("eth-stitch.txt", "ETH", ethPrice, blocktimes, eth)
+}
 
-	factom.SetFactomdServer("spoon:8088")
+func stitch(out, symbol string, prices map[time.Time]float64, blocktimes map[int]time.Time, costs []Fee) {
+	f, err := os.Create(out)
+	p(err)
+	defer f.Close()
 
-	for i := int64(1); i < 257893; i++ {
-		db, _, err := factom.GetDBlockByHeight(i)
-		if err != nil {
-			log.Println(err)
-		}
+	fmt.Fprintln(f, "Block,Time,Price,Fee,Value,Cumulative,CumulativePrice")
+	cum := 0.0
+	cump := 0.0
+	for _, c := range costs {
+		t := blocktimes[c.Height]
+		hour := t.Add(-time.Duration(t.Minute()) * time.Minute)
+		hour = hour.Add(-time.Duration(t.Hour()) * time.Hour)
 
-		t := time.Unix(int64(db.Header.Timestamp)*60, 0).UTC()
-		blocktimes[db.Header.DBHeight] = t
-		if i%10000 == 0 {
-			fmt.Println(i)
-		}
+		price := prices[hour]
+
+		val := c.Fee * price
+		cum += c.Fee
+		cump += val
+
+		fmt.Fprintf(f, "%d,%s,%f,%f,%f,%f,%f\n", c.Height, t.Format("2006-01-02 15:04"), price, c.Fee, val, cum, cump)
 	}
-
-	btime, err := os.Create("blocktime.json")
-	if err != nil {
-		panic(err)
-	}
-	b, err := json.Marshal(blocktimes)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(btime.Write(b))
-	btime.Close()
 }
