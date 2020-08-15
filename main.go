@@ -1,15 +1,49 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/FactomProject/factom"
 )
 
 var eth *Ethscan
 var btc *BTC
+
+func p(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func loadCosts(fname string) map[int]bool {
+	f, err := os.Open(fname)
+	p(err)
+	defer f.Close()
+
+	res := make(map[int]bool)
+	sc := bufio.NewScanner(f)
+	first := true
+	for sc.Scan() {
+		if first {
+			first = false
+			continue
+		}
+
+		tokens := strings.Split(sc.Text(), ",")
+
+		height, err := strconv.Atoi(strings.TrimSpace(tokens[0]))
+		p(err)
+
+		res[height] = true
+	}
+
+	return res
+}
 
 func main() {
 	server := flag.String("s", "localhost:8088", "The location of the factomd api")
@@ -21,6 +55,9 @@ func main() {
 	if *ethapi == "" {
 		panic("no eth api key provided")
 	}
+
+	ethcache := make(map[string]bool)
+	ethdone := loadCosts("ethereum.txt")
 
 	eth = NewEthscan(*ethapi)
 	btc = NewBTC()
@@ -55,26 +92,28 @@ func main() {
 		if end > 0 && i > end {
 			break
 		}
+
 		anchor, err := factom.GetAnchorsByHeight(i)
 		if err != nil {
 			fmt.Println("ERROR", i, err)
 			break
 		}
 
-		if anchor.Bitcoin != nil {
+		/*if false && anchor.Bitcoin != nil {
 			if spent, err := doBTC(anchor.Bitcoin.TransactionHash); err != nil {
 				fmt.Println("ERROR", i, err)
 				break
 			} else {
 				fmt.Fprintf(btcf, "%d, %s, %.9f\n", i, anchor.Bitcoin.TransactionHash, spent)
 			}
-		}
+		}*/
 
-		if anchor.Ethereum != nil {
+		if !ethdone[int(i)] && anchor.Ethereum != nil && !ethcache[anchor.Ethereum.TxID] {
+			ethcache[anchor.Ethereum.TxID] = true
 			if spent, err := doEth(anchor.Ethereum.TxID); err != nil {
 				fmt.Println("ERROR", i, err)
 				break
-			} else {
+			} else if spent >= 0 {
 				fmt.Fprintf(ethf, "%d, %s, %.9f\n", i, anchor.Ethereum.TxID, spent)
 			}
 

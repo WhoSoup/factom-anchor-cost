@@ -43,6 +43,8 @@ func loadCosts(fname string) []Fee {
 	p(err)
 	defer f.Close()
 
+	dupl := make(map[string]bool)
+
 	var res []Fee
 	sc := bufio.NewScanner(f)
 	first := true
@@ -53,6 +55,12 @@ func loadCosts(fname string) []Fee {
 		}
 
 		tokens := strings.Split(sc.Text(), ",")
+
+		txid := tokens[1]
+		if dupl[txid] {
+			continue
+		}
+		dupl[txid] = true
 
 		height, err := strconv.Atoi(strings.TrimSpace(tokens[0]))
 		p(err)
@@ -108,8 +116,8 @@ func main() {
 	btcPrice := loadPrices("Coinbase_BTCUSD_d.csv")
 	ethPrice := loadPrices("Coinbase_ETHUSD_d.csv")
 	blocktimes := loadBlockTimes()
-	btc := loadCosts("bitcoin-filtered.txt")
-	eth := loadCosts("ethereum-filtered.txt")
+	btc := loadCosts("bitcoin.txt")
+	eth := loadCosts("ethereum.txt")
 
 	stitch("btc-stitch.txt", "BTC", btcPrice, blocktimes, btc)
 	stitch("eth-stitch.txt", "ETH", ethPrice, blocktimes, eth)
@@ -120,9 +128,10 @@ func stitch(out, symbol string, prices map[time.Time]float64, blocktimes map[int
 	p(err)
 	defer f.Close()
 
-	fmt.Fprintln(f, "Block,Time,Price,Fee,Value,Cumulative,CumulativePrice")
+	fmt.Fprintln(f, "Block,Time,Price,Fee,FeeUSD,Cumulative,CumulativeUSD")
 	cum := 0.0
-	cump := 0.0
+	cumusd := 0.0
+
 	for _, c := range costs {
 		t := blocktimes[c.Height]
 		hour := t.Add(-time.Duration(t.Minute()) * time.Minute)
@@ -132,8 +141,8 @@ func stitch(out, symbol string, prices map[time.Time]float64, blocktimes map[int
 
 		val := c.Fee * price
 		cum += c.Fee
-		cump += val
+		cumusd += val
 
-		fmt.Fprintf(f, "%d,%s,%f,%f,%f,%f,%f\n", c.Height, t.Format("2006-01-02 15:04"), price, c.Fee, val, cum, cump)
+		fmt.Fprintf(f, "%d,%s,%f,%f,%f,%f,%f\n", c.Height, t.Format("2006-01-02 15:04"), price, c.Fee, val, cum, cumusd)
 	}
 }
