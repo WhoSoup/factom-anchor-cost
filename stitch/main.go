@@ -36,6 +36,7 @@ type Fee struct {
 	Height int
 	Hash   string
 	Fee    float64
+	TxTime time.Time
 }
 
 func loadCosts(fname string) []Fee {
@@ -67,10 +68,14 @@ func loadCosts(fname string) []Fee {
 		fee, err := strconv.ParseFloat(strings.TrimSpace(tokens[2]), 64)
 		p(err)
 
+		t, err := time.Parse("2006-01-02 15:04", tokens[3])
+		p(err)
+
 		res = append(res, Fee{
 			Height: height,
 			Hash:   strings.TrimSpace(tokens[1]),
 			Fee:    fee,
+			TxTime: t,
 		})
 	}
 
@@ -116,8 +121,8 @@ func main() {
 	btcPrice := loadPrices("Coinbase_BTCUSD_d.csv")
 	ethPrice := loadPrices("Coinbase_ETHUSD_d.csv")
 	blocktimes := loadBlockTimes()
-	btc := loadCosts("bitcoin.txt")
-	eth := loadCosts("ethereum.txt")
+	btc := loadCosts("bitcoin-dates.txt")
+	eth := loadCosts("ethereum-dates.txt")
 
 	stitch("btc-stitch.txt", "BTC", btcPrice, blocktimes, btc)
 	stitch("eth-stitch.txt", "ETH", ethPrice, blocktimes, eth)
@@ -128,12 +133,14 @@ func stitch(out, symbol string, prices map[time.Time]float64, blocktimes map[int
 	p(err)
 	defer f.Close()
 
-	fmt.Fprintln(f, "Block,Time,Price,Fee,FeeUSD,Cumulative,CumulativeUSD")
+	fmt.Fprintln(f, "BlockTime,TxTime,Price,Fee,FeeUSD,Cumulative,CumulativeUSD")
 	cum := 0.0
 	cumusd := 0.0
 
 	for _, c := range costs {
-		t := blocktimes[c.Height]
+		bt := blocktimes[c.Height]
+
+		t := c.TxTime
 		hour := t.Add(-time.Duration(t.Minute()) * time.Minute)
 		hour = hour.Add(-time.Duration(t.Hour()) * time.Hour)
 
@@ -143,6 +150,6 @@ func stitch(out, symbol string, prices map[time.Time]float64, blocktimes map[int
 		cum += c.Fee
 		cumusd += val
 
-		fmt.Fprintf(f, "%d,%s,%f,%f,%f,%f,%f\n", c.Height, t.Format("2006-01-02 15:04"), price, c.Fee, val, cum, cumusd)
+		fmt.Fprintf(f, "%s,%s,%f,%f,%f,%f,%f\n", bt.Format("2006-01-02 15:04"), t.Format("2006-01-02 15:04"), price, c.Fee, val, cum, cumusd)
 	}
 }
