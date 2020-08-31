@@ -65,9 +65,7 @@ func main() {
 		}
 
 		pos += int64(len(txs))
-		if pos > 150 {
-			break
-		}
+		fmt.Println("done", pos)
 	}
 
 }
