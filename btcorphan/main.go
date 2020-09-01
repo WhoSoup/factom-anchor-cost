@@ -62,6 +62,7 @@ func main() {
 			t := time.Unix(tx.Time, 0).Format("2006-01-02 15:04")
 
 			fmt.Fprintf(out, "%s,%d,%064x,%s\n", tx.Hash, height, keymr, t)
+			time.Sleep(time.Second * 20)
 		}
 
 		pos += int64(len(txs))
