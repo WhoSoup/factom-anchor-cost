@@ -67,7 +67,7 @@ func main() {
 
 		pos += int64(len(txs))
 		fmt.Println("done", pos)
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 30)
 	}
 
 }
